@@ -130,3 +130,66 @@ fn too_many_hss_levels_are_rejected() {
         );
     }
 }
+
+#[test]
+fn damaged_aux_data_is_ignored() {
+    let mut aux_data = vec![0u8; 4096];
+    let mut aux_slice: &mut [u8] = &mut aux_data;
+    let (signing_key, verifying_key) = key_pair(1, Some(&mut aux_slice));
+    // Key generation shrinks the slice to the aux data it wrote.
+    let aux_len = aux_slice.len();
+    aux_data.truncate(aux_len);
+    let public_key = verifying_key.as_slice();
+
+    // Signing is deterministic: every case must give the signature made without aux data.
+    let reference_signature = sign(&mut signing_key.clone());
+
+    let mut flipped_levels = aux_data.clone();
+    flipped_levels[3] ^= 0xff;
+
+    let mut cases = vec![
+        (String::from("intact aux data"), aux_data.clone()),
+        (
+            String::from("aux data with flipped level bits"),
+            flipped_levels,
+        ),
+    ];
+    for len in [aux_len - 1, aux_len / 2, 5, 4, 3, 1] {
+        cases.push((
+            format!("aux data cut to {} bytes", len),
+            aux_data[..len].to_vec(),
+        ));
+    }
+
+    for (case, mut aux) in cases {
+        let mut signing_key = signing_key.clone();
+        let mut aux_slice: &mut [u8] = &mut aux;
+        let signature = signing_key
+            .try_sign_with_aux(MESSAGE, Some(&mut aux_slice))
+            .unwrap_or_else(|_| panic!("signing failed with {}", case));
+        assert!(
+            verify::<H>(MESSAGE, signature.as_ref(), public_key).is_ok(),
+            "signature made with {} does not verify",
+            case
+        );
+        assert_eq!(
+            signature.as_ref(),
+            &reference_signature[..],
+            "signature made with {} differs from the one made without aux data",
+            case
+        );
+    }
+}
+
+#[test]
+fn empty_aux_buffer_is_ignored() {
+    let mut empty: &mut [u8] = &mut [];
+    let (mut signing_key, verifying_key) = key_pair(1, Some(&mut empty));
+    assert_eq!(verifying_key, key_pair(1, None).1);
+
+    let mut empty: &mut [u8] = &mut [];
+    let signature = signing_key
+        .try_sign_with_aux(MESSAGE, Some(&mut empty))
+        .expect("signing with an empty aux buffer");
+    assert!(verify::<H>(MESSAGE, signature.as_ref(), verifying_key.as_slice()).is_ok());
+}

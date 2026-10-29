@@ -75,9 +75,9 @@ pub fn hss_expand_aux_data<'a, H: HashChain>(
 
     let mut expanded_aux_data: MutableExpandedAuxData = Default::default();
 
-    let mut aux_data = aux_data.unwrap();
+    let mut aux_data = aux_data?;
 
-    if aux_data[AUX_DATA_MARKER] == NO_AUX_DATA {
+    if !hss_is_aux_data_used(aux_data) {
         return None;
     }
 
@@ -96,9 +96,13 @@ pub fn hss_expand_aux_data<'a, H: HashChain>(
         layer_sizes[index] = (H::OUTPUT_SIZE as usize) << index;
     }
 
+    let len_aux_data = index + layer_sizes.iter().sum::<usize>();
+    if aux_data.len() < len_aux_data {
+        return None;
+    }
+
     // Check if data is valid
     if let Some(seed) = seed {
-        let len_aux_data = index + layer_sizes.iter().sum::<usize>();
         let (aux_data, aux_data_mac) = aux_data.split_at(len_aux_data);
 
         let key = compute_seed_derive::<H>(seed);
@@ -147,7 +151,7 @@ pub fn hss_store_aux_marker(aux_data: &mut [u8], aux_level: AuxLevel) {
 }
 
 pub fn hss_is_aux_data_used(aux_data: &[u8]) -> bool {
-    aux_data[AUX_DATA_MARKER] != NO_AUX_DATA
+    matches!(aux_data.get(AUX_DATA_MARKER), Some(&marker) if marker != NO_AUX_DATA)
 }
 
 pub fn hss_save_aux_data<H: HashChain>(

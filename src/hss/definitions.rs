@@ -93,6 +93,9 @@ impl<H: HashChain> HssPrivateKey<H> {
         is_aux_data_used: bool,
     ) -> Option<MutableExpandedAuxData<'a>> {
         let aux_data = aux_data?;
+        if aux_data.is_empty() {
+            return None;
+        }
 
         if is_aux_data_used {
             return hss_expand_aux_data::<H>(Some(aux_data), Some(private_key.seed.as_slice()));
